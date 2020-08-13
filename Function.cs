@@ -15,21 +15,13 @@ namespace slack_pokerbot_dotnet
     public class Functions
     {
         /// <summary>
-        /// Default constructor that Lambda will invoke.
-        /// </summary>
-        public Functions()
-        {
-        }
-
-
-        /// <summary>
-        /// A Lambda function to respond to HTTP Get methods from API Gateway
+        /// A Lambda function to respond to HTTP Post methods from API Gateway
         /// </summary>
         /// <param name="request"></param>
         /// <returns>The API Gateway response.</returns>
         public APIGatewayProxyResponse Get(APIGatewayProxyRequest request, ILambdaContext context)
         {
-            context.Logger.LogLine("Get Request\n");
+            context.Logger.LogLine("Post Request\n");
 
             var response = new APIGatewayProxyResponse
             {

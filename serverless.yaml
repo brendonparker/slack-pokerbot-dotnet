@@ -34,14 +34,14 @@ Resources:
   SlackPokerBotFunction:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Properties:
-      Handler: slack-pokerbot-dotnet::slack_pokerbot_dotnet.Functions::Get
+      Handler: slack-pokerbot-dotnet::slack_pokerbot_dotnet.Functions::Post
       Runtime: dotnetcore3.1
       Events:
         RootGet:
           Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
           Properties:
             Path: /
-            Method: GET
+            Method: POST
       Environment:
         Variables:
           SLACK_TOKEN: !Ref SlackToken
