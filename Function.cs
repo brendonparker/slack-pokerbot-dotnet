@@ -38,13 +38,13 @@ namespace slack_pokerbot_dotnet
         /// </summary>
         /// <param name="request"></param>
         /// <returns>The API Gateway response.</returns>
-        public async Task<APIGatewayProxyResponse> Post(APIGatewayProxyRequest request, ILambdaContext context)
+        public APIGatewayProxyResponse Post(APIGatewayProxyRequest request, ILambdaContext context)
         {
-            context.Logger.LogLine("Post Request\n");
+            Console.WriteLine("Post Request\n");
 
             var slackEvent = SlackEvent.FromFormEncodedData(request.Body);
 
-            context.Logger.LogLine("Slack Event: " + JsonConvert.SerializeObject(slackEvent));
+            Console.WriteLine("Slack Event: " + JsonConvert.SerializeObject(slackEvent));
 
             if (!IsValidSlackToken(slackEvent.token))
                 throw new Exception("Invalid Slack Token");
@@ -55,9 +55,25 @@ namespace slack_pokerbot_dotnet
             }
 
             var commandArguments = slackEvent.text.Split(' ');
-            var command = commandArguments[0];
 
-            context.Logger.LogLine($"command: {command}");
+            // The dynamodb can take several seconds to initiate its setup/sslhandshake on the first run
+            // So...
+            // Go ahead and return an OK response, and handle the processing of the command in a separate task
+            Task.Factory.StartNew(async () => await HandleCommandAsync(request, slackEvent, commandArguments));
+
+            return new APIGatewayProxyResponse
+            {
+                StatusCode = (int)HttpStatusCode.OK
+            };
+        }
+
+        private async Task HandleCommandAsync(
+            APIGatewayProxyRequest request,
+            SlackEvent slackEvent,
+            string[] commandArguments)
+        {
+            var command = commandArguments[0];
+            Console.WriteLine($"command: {command}");
 
             switch (command)
             {
@@ -65,14 +81,22 @@ namespace slack_pokerbot_dotnet
                     {
                         if (commandArguments.Length < 2)
                         {
-                            return CreateEphemeralResponse("You must enter a size format `/poker setup [f, s, t, m]`.");
+                            await SendDelayedMessageAsync(slackEvent.response_url, new SlackReply
+                            {
+                                text = "You must enter a size format `/poker setup [f, s, t, m]`."
+                            });
+                            return;
                         }
 
                         var size = commandArguments[1];
 
                         if (!sizeRepo.IsValidSize(size))
                         {
-                            return CreateEphemeralResponse($"Your choices are {sizeRepo.ListOfValidSizes()} in format /poker setup <choice>.");
+                            await SendDelayedMessageAsync(slackEvent.response_url, new SlackReply
+                            {
+                                text = $"Your choices are {sizeRepo.ListOfValidSizes()} in format /poker setup <choice>."
+                            });
+                            return;
                         }
 
                         await dbContext.SaveAsync(new DbSizeConfig
@@ -86,15 +110,28 @@ namespace slack_pokerbot_dotnet
                             }
                         });
 
-                        return CreateEphemeralResponse("Size has been set for channel.");
+                        await SendDelayedMessageAsync(slackEvent.response_url, new SlackReply
+                        {
+                            text = "Size has been set for channel."
+                        });
+
+                        return;
                     }
                 case "start":
-                    return CreateEphemeralResponse("No need to start, just *deal*");
+                    await SendDelayedMessageAsync(slackEvent.response_url, new SlackReply
+                    {
+                        text = "No need to start, just *deal*"
+                    });
+                    return;
                 case "deal":
                     {
                         if (commandArguments.Length < 2)
                         {
-                            return CreateEphemeralResponse("You did not enter a JIRA ticket number.");
+                            await SendDelayedMessageAsync(slackEvent.response_url, new SlackReply
+                            {
+                                text = "You did not enter a JIRA ticket number."
+                            });
+                            return;
                         }
 
                         var ticketNumber = commandArguments[1];
@@ -110,15 +147,15 @@ namespace slack_pokerbot_dotnet
                             }
                         });
                         sw.Stop();
-                        context.Logger.LogLine($"Saved Session in {sw.ElapsedMilliseconds}ms");
+                        Console.WriteLine($"Saved Session in {sw.ElapsedMilliseconds}ms");
 
 
                         sw.Restart();
                         var config = await dbContext.LoadAsync<DbSizeConfig>(slackEvent.TeamAndChannel, "Config");
                         sw.Stop();
-                        context.Logger.LogLine($"Loaded config in {sw.ElapsedMilliseconds}ms");
+                        Console.WriteLine($"Loaded config in {sw.ElapsedMilliseconds}ms");
 
-                        return CreateMessage(new SlackReply
+                        await SendDelayedMessageAsync(slackEvent.response_url, new SlackReply
                         {
                             text = $"*The planning poker game has started* for {ticketNumber}",
                             attachments = new[]
@@ -131,6 +168,8 @@ namespace slack_pokerbot_dotnet
                             },
                             response_type = "in_channel"
                         });
+
+                        return;
                     }
                 case "vote":
                     {
@@ -138,10 +177,22 @@ namespace slack_pokerbot_dotnet
                         var session = await GetCurrentSession(slackEvent);
 
                         if (config == null || session == null)
-                            return CreateEphemeralResponse("The poker planning game hasn't started yet.");
+                        {
+                            await SendDelayedMessageAsync(slackEvent.response_url, new SlackReply
+                            {
+                                text = "The poker planning game hasn't started yet."
+                            });
+                            return;
+                        }
 
                         if (commandArguments.Length < 2)
-                            return CreateEphemeralResponse("Your vote was not counted. You didn't enter a size.");
+                        {
+                            await SendDelayedMessageAsync(slackEvent.response_url, new SlackReply
+                            {
+                                text = "Your vote was not counted. You didn't enter a size."
+                            });
+                            return;
+                        }
 
                         var voteVal = commandArguments[1];
 
@@ -149,7 +200,11 @@ namespace slack_pokerbot_dotnet
                         if (!sizeValues.ContainsKey(voteVal))
                         {
                             var validSizes = string.Join(", ", sizeValues.Keys);
-                            return CreateEphemeralResponse("Your vote was not counted. Please enter a valid poker planning size: " + validSizes);
+                            await SendDelayedMessageAsync(slackEvent.response_url, new SlackReply
+                            {
+                                text = "Your vote was not counted. Please enter a valid poker planning size: " + validSizes
+                            });
+                            return;
                         }
 
                         var pokerVote = new PokerSessionVote
@@ -185,21 +240,26 @@ namespace slack_pokerbot_dotnet
                             }
                         });
 
-                        // Intentionally fire-and-forget
-                        SendDelayedMessageAsync(slackEvent.response_url, new SlackReply
+                        await SendDelayedMessageAsync(slackEvent.response_url, new SlackReply
                         {
                             text = $"{slackEvent.user_name} voted!",
                             response_type = "in_channel"
                         });
 
-                        return CreateEphemeralResponse($"You voted *{voteVal}*");
+                        return;// CreateEphemeralResponse($"You voted *{voteVal}*");
                     }
                 case "tally":
                     {
                         var session = await GetCurrentSession(slackEvent);
 
                         if (session == null)
-                            return CreateEphemeralResponse("The poker planning game hasn't started yet.");
+                        {
+                            await SendDelayedMessageAsync(slackEvent.response_url, new SlackReply
+                            {
+                                text = "The poker planning game hasn't started yet."
+                            });
+                            return;
+                        }
 
                         var userNames = session.Attributes
                             .Votes
@@ -214,16 +274,34 @@ namespace slack_pokerbot_dotnet
                         if (userNames.Count == 1)
                             msg = $"{userNames[0]} has voted";
 
-                        return CreateMessage(new SlackReply { text = msg, response_type = "in_channel" });
+                        await SendDelayedMessageAsync(slackEvent.response_url, new SlackReply
+                        {
+                            text = msg,
+                            response_type = "in_channel"
+                        });
+
+                        return;
                     }
                 case "reveal":
                     {
                         var session = await GetCurrentSession(slackEvent);
                         if (session == null)
-                            return CreateEphemeralResponse("The poker planning game hasn't started yet.");
+                        {
+                            await SendDelayedMessageAsync(slackEvent.response_url, new SlackReply
+                            {
+                                text = "The poker planning game hasn't started yet."
+                            });
+                            return;
+                        }
 
                         if (!session.Attributes.Votes.Any())
-                            return CreateEphemeralResponse("No one voted :sad:");
+                        {
+                            await SendDelayedMessageAsync(slackEvent.response_url, new SlackReply
+                            {
+                                text = "No one voted :sad:"
+                            });
+                            return;
+                        }
 
                         var mostRecentVotes = session.Attributes.Votes
                             .GroupBy(x => x.UserId)
@@ -236,7 +314,7 @@ namespace slack_pokerbot_dotnet
                         if (mostRecentVotes.Select(x => x.Vote).Distinct().Count() == 1)
                         {
                             var voteVal = mostRecentVotes.First().Vote;
-                            return CreateMessage(new SlackReply
+                            await SendDelayedMessageAsync(slackEvent.response_url, new SlackReply
                             {
                                 text = "*Congratulations!*",
                                 attachments = new[]
@@ -250,6 +328,7 @@ namespace slack_pokerbot_dotnet
                                 },
                                 response_type = "in_channel"
                             });
+                            return;
                         }
                         else
                         {
@@ -265,12 +344,13 @@ namespace slack_pokerbot_dotnet
                                     };
                                 });
 
-                            return CreateMessage(new SlackReply
+                            await SendDelayedMessageAsync(slackEvent.response_url, new SlackReply
                             {
                                 text = "*No winner yet.* Discuss and continue voting.",
                                 attachments = attachments,
                                 response_type = "in_channel"
                             });
+                            return;
                         }
                     }
                 case "report":
@@ -289,10 +369,17 @@ namespace slack_pokerbot_dotnet
 
                         var msg = PlainTextTable.ToTable(Report(previousSessions));
 
-                        return CreateEphemeralResponse(msg);
+                        await SendDelayedMessageAsync(slackEvent.response_url, new SlackReply
+                        {
+                            text = msg
+                        });
+
+                        return;
                     }
                 case "help":
-                    return CreateEphemeralResponse(@"Pokerbot helps you play Agile/Scrum poker planning.
+                    await SendDelayedMessageAsync(slackEvent.response_url, new SlackReply
+                    {
+                        text = @"Pokerbot helps you play Agile/Scrum poker planning.
 
 Use the following commands:
  /poker setup
@@ -300,9 +387,15 @@ Use the following commands:
  /poker vote
  /poker tally
  /poker reveal
- /poker history");
+ /poker history"
+                    });
+                    return;
             }
-            return CreateEphemeralResponse("Invalid command. Type */poker help* for pokerbot commands.");
+            await SendDelayedMessageAsync(slackEvent.response_url, new SlackReply
+            {
+                text = "Invalid command. Type */poker help* for pokerbot commands."
+            });
+            return;
         }
 
         private async Task<DbPokerSession> GetCurrentSession(SlackEvent slackEvent)
@@ -348,17 +441,6 @@ Use the following commands:
             {
                 StatusCode = (int)HttpStatusCode.OK,
                 Body = JsonConvert.SerializeObject(new { text }),
-                Headers = new Dictionary<string, string> { { "Content-Type", "application/json" } }
-            };
-        }
-
-        public APIGatewayProxyResponse CreateMessage(SlackReply msg)
-        {
-            Console.WriteLine($"CreateMessage: {msg.text}");
-            return new APIGatewayProxyResponse
-            {
-                StatusCode = (int)HttpStatusCode.OK,
-                Body = JsonConvert.SerializeObject(msg),
                 Headers = new Dictionary<string, string> { { "Content-Type", "application/json" } }
             };
         }
