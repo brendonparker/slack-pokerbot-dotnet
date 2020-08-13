@@ -13,6 +13,8 @@ using Amazon.DynamoDBv2.DocumentModel;
 using Amazon.DynamoDBv2.Model;
 using System.Net.Http;
 using System.Text;
+using System.Globalization;
+using System.Diagnostics;
 
 // Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class.
 [assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.SystemTextJson.DefaultLambdaJsonSerializer))]
@@ -31,6 +33,10 @@ namespace slack_pokerbot_dotnet
             client = new AmazonDynamoDBClient();
             dbContext = new DynamoDBContext(client);
             sizeRepo = new SizeRepo();
+
+            // Hack: Warm up dbContext
+            // Intentionally fire and forget
+            dbContext.LoadAsync<DbSizeConfig>("", "");
         }
 
         /// <summary>
@@ -99,6 +105,8 @@ namespace slack_pokerbot_dotnet
 
                         var ticketNumber = commandArguments[1];
 
+                        var sw = new Stopwatch();
+                        sw.Start();
                         await dbContext.SaveAsync(new DbPokerSession
                         {
                             TeamAndChannel = slackEvent.TeamAndChannel,
@@ -107,8 +115,14 @@ namespace slack_pokerbot_dotnet
                                 JiraTicket = ticketNumber
                             }
                         });
+                        sw.Stop();
+                        context.Logger.LogLine($"Saved Session in {sw.ElapsedMilliseconds}ms");
 
+
+                        sw.Restart();
                         var config = await dbContext.LoadAsync<DbSizeConfig>(slackEvent.TeamAndChannel, "Config");
+                        sw.Stop();
+                        context.Logger.LogLine($"Loaded config in {sw.ElapsedMilliseconds}ms");
 
                         return CreateMessage($"*The planning poker game has started* for {ticketNumber}", new[]
                         {
@@ -152,7 +166,7 @@ namespace slack_pokerbot_dotnet
                         {
                             UserId = slackEvent.user_id,
                             UserName = slackEvent.user_name,
-                            Timestamp = DateTime.UtcNow,
+                            Timestamp = DateTime.UtcNow.Ticks,
                             Vote = voteVal
                         };
 

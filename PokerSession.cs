@@ -16,6 +16,6 @@ namespace slack_pokerbot_dotnet
         public string UserId { get; set; }
         public string UserName { get; set; }
         public string Vote { get; set; }
-        public DateTime Timestamp { get; set; }
+        public long Timestamp { get; set; }
     }
 }
