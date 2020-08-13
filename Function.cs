@@ -123,13 +123,18 @@ namespace slack_pokerbot_dotnet
                         sw.Stop();
                         context.Logger.LogLine($"Loaded config in {sw.ElapsedMilliseconds}ms");
 
-                        return CreateMessage($"*The planning poker game has started* for {ticketNumber}", new[]
+                        return CreateMessage(new SlackReply
                         {
-                            new SlackAttachment
+                            text = $"*The planning poker game has started* for {ticketNumber}",
+                            attachments = new[]
                             {
-                                Text = "Vote by typing */poker vote <size>*.",
-                                ImageUrl = sizeRepo.GetCompositeImage(config.Attributes.Size)
-                            }
+                                new SlackAttachment
+                                {
+                                    Text = "Vote by typing */poker vote <size>*.",
+                                    ImageUrl = sizeRepo.GetCompositeImage(config.Attributes.Size)
+                                }
+                            },
+                            response_type = "in_channel"
                         });
                     }
                 case "vote":
@@ -206,12 +211,14 @@ namespace slack_pokerbot_dotnet
                             .Select(x => x.First().UserName)
                             .ToList();
 
-                        if (userNames.Count == 0)
-                            return CreateEphemeralResponse("No one has voted yet");
-                        if (userNames.Count == 1)
-                            return CreateEphemeralResponse($"{userNames[0]} has voted");
+                        var msg = $"{string.Join(", ", userNames)} have voted";
 
-                        return CreateEphemeralResponse($"{string.Join(", ", userNames)} have voted");
+                        if (userNames.Count == 0)
+                            msg = "No one has voted yet";
+                        if (userNames.Count == 1)
+                            msg = $"{userNames[0]} has voted";
+
+                        return CreateMessage(new SlackReply { text = msg, response_type = "in_channel" });
                     }
                 case "reveal":
                     {
@@ -233,14 +240,19 @@ namespace slack_pokerbot_dotnet
                         if (mostRecentVotes.Select(x => x.Vote).Distinct().Count() == 1)
                         {
                             var voteVal = mostRecentVotes.First().Vote;
-                            return CreateMessage("*Congratulations!*", new[]
+                            return CreateMessage(new SlackReply
                             {
-                                new SlackAttachment
+                                text = "*Congratulations!*",
+                                attachments = new[]
                                 {
-                                    Text = "Everyone selected the same number",
-                                    Color = "good",
-                                    ImageUrl = validValues[voteVal]
-                                }
+                                    new SlackAttachment
+                                    {
+                                        Text = "Everyone selected the same number",
+                                        Color = "good",
+                                        ImageUrl = validValues[voteVal]
+                                    }
+                                },
+                                response_type = "in_channel"
                             });
                         }
                         else
@@ -257,11 +269,16 @@ namespace slack_pokerbot_dotnet
                                     };
                                 });
 
-                            return CreateMessage("*No winner yet.* Discuss and continue voting.", attachments);
+                            return CreateMessage(new SlackReply
+                            {
+                                text = "*No winner yet.* Discuss and continue voting.",
+                                attachments = attachments,
+                                response_type = "in_channel"
+                            });
                         }
                     }
                 case "end":
-                    break;
+                    return CreateEphemeralResponse("end hasn't been implemented yet");
             }
             return CreateEphemeralResponse("Invalid command. Type */poker help* for pokerbot commands.");
         }
@@ -313,13 +330,13 @@ namespace slack_pokerbot_dotnet
             };
         }
 
-        public APIGatewayProxyResponse CreateMessage(string text, IEnumerable<SlackAttachment> attachments = null)
+        public APIGatewayProxyResponse CreateMessage(SlackReply msg)
         {
-            Console.WriteLine($"CreateMessage: {text}");
+            Console.WriteLine($"CreateMessage: {msg.text}");
             return new APIGatewayProxyResponse
             {
                 StatusCode = (int)HttpStatusCode.OK,
-                Body = JsonConvert.SerializeObject(new { text, attachments }),
+                Body = JsonConvert.SerializeObject(msg),
                 Headers = new Dictionary<string, string> { { "Content-Type", "application/json" } }
             };
         }
