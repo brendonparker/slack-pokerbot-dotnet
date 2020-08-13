@@ -31,11 +31,13 @@ namespace slack_pokerbot_dotnet
         /// </summary>
         /// <param name="request"></param>
         /// <returns>The API Gateway response.</returns>
-        public APIGatewayProxyResponse Get(APIGatewayProxyRequest request, ILambdaContext context)
+        public APIGatewayProxyResponse Post(APIGatewayProxyRequest request, ILambdaContext context)
         {
             context.Logger.LogLine("Post Request\n");
 
             var slackEvent = SlackEvent.FromFormEncodedData(request.Body);
+
+            context.Logger.LogLine("Slack Event: " + JsonConvert.SerializeObject(slackEvent));
 
             if (!IsValidSlackToken(slackEvent.token))
                 throw new Exception("Invalid Slack Token");
@@ -45,6 +47,28 @@ namespace slack_pokerbot_dotnet
                 return CreateEphemeralResponse("Type */poker help* for pokerbot commands.");
             }
 
+            var commandArguments = slackEvent.text.Split(' ');
+            var subcommand = commandArguments[0];
+
+            context.Logger.LogLine($"subCommand: {subcommand}");
+
+            switch (subcommand)
+            {
+                case "setup":
+                    break;
+                case "start":
+                    break;
+                case "deal":
+                    break;
+                case "vote":
+                    break;
+                case "tally":
+                    break;
+                case "reveal":
+                    break;
+                case "end":
+                    break;
+            }
             return CreateEphemeralResponse("Invalid command. Type */poker help* for pokerbot commands.");
         }
 
@@ -54,13 +78,13 @@ namespace slack_pokerbot_dotnet
             {
                 StatusCode = (int)HttpStatusCode.OK,
                 Body = JsonConvert.SerializeObject(new { text }),
-                Headers = new Dictionary<string, string> { { "Content-Type", "text/plain" } }
+                Headers = new Dictionary<string, string> { { "Content-Type", "application/json" } }
             };
         }
 
         private bool IsValidSlackToken(string token)
         {
-            var configuredSlackToken = Environment.GetEnvironmentVariable("SlackToken");
+            var configuredSlackToken = Environment.GetEnvironmentVariable("SLACK_TOKEN");
             var validTokens = configuredSlackToken.Split(new[] { ' ', ';', ',' }, StringSplitOptions.RemoveEmptyEntries);
             return validTokens.Contains(token);
         }
