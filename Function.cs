@@ -136,16 +136,7 @@ namespace slack_pokerbot_dotnet
                 case "vote":
                     {
                         var config = await dbContext.LoadAsync<DbSizeConfig>(slackEvent.TeamAndChannel, "Config");
-
-                        var queryConfig = new DynamoDBOperationConfig
-                        {
-                            BackwardQuery = true
-                        };
-                        var results = await dbContext
-                            .QueryAsync<DbPokerSession>(slackEvent.TeamAndChannel, QueryOperator.BeginsWith, new[] { "Session|" }, queryConfig)
-                            .GetNextSetAsync();
-
-                        var session = results.FirstOrDefault();
+                        var session = await GetCurrentSession(slackEvent);
 
                         if (config == null || session == null)
                             return CreateEphemeralResponse("The poker planning game hasn't started yet.");
@@ -204,13 +195,45 @@ namespace slack_pokerbot_dotnet
                         return CreateEphemeralResponse($"You voted *{voteVal}*");
                     }
                 case "tally":
-                    break;
+                    {
+                        var session = await GetCurrentSession(slackEvent);
+
+                        if (session == null)
+                            return CreateEphemeralResponse("The poker planning game hasn't started yet.");
+
+                        var userNames = session.Attributes
+                            .Votes
+                            .GroupBy(x => x.UserId)
+                            .Select(x => x.First().UserName)
+                            .ToList();
+
+                        if(userNames.Count == 0)
+                            return CreateEphemeralResponse("No one has voted yet");
+                        if(userNames.Count == 1)
+                            return CreateEphemeralResponse($"{userNames[0]} has voted");
+
+                        return CreateEphemeralResponse($"{string.Join(", ", userNames)} have voted");
+                    }
                 case "reveal":
                     break;
                 case "end":
                     break;
             }
             return CreateEphemeralResponse("Invalid command. Type */poker help* for pokerbot commands.");
+        }
+
+        private async Task<DbPokerSession> GetCurrentSession(SlackEvent slackEvent)
+        {
+            var queryConfig = new DynamoDBOperationConfig
+            {
+                // Trying to get the session "at the top of the stack"
+                BackwardQuery = true
+            };
+            var results = await dbContext
+                .QueryAsync<DbPokerSession>(slackEvent.TeamAndChannel, QueryOperator.BeginsWith, new[] { "Session|" }, queryConfig)
+                .GetNextSetAsync();
+
+            return results.FirstOrDefault();
         }
 
         public async Task SendDelayedMessageAsync(string requestUri, SlackReply slackMessage)
