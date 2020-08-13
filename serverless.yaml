@@ -38,7 +38,7 @@ Resources:
   SlackPokerBotFunction:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Properties:
-      Handler: slack-pokerbot-dotnet::slack_pokerbot_dotnet.WebApiFunction::HandleCommand
+      Handler: slack-pokerbot-dotnet::slack_pokerbot_dotnet.NotificationFunction::FunctionHandler
       Runtime: dotnetcore3.1
       Events:
         RootNotification:
