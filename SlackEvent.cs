@@ -22,6 +22,8 @@ namespace slack_pokerbot_dotnet
             return JsonConvert.DeserializeObject<SlackEvent>(JsonConvert.SerializeObject(keyValuePairs));
         }
 
+        public string TeamAndChannel => $"{team_id}|{channel_id}";
+
         public string token { get; set; }
         public string team_id { get; set; }
         public string team_domain { get; set; }
