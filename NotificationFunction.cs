@@ -14,19 +14,16 @@ using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 
-// Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class.
-[assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.SystemTextJson.DefaultLambdaJsonSerializer))]
-
 namespace slack_pokerbot_dotnet
 {
-    public partial class Functions
+    public partial class NotificationFunction
     {
         private readonly AmazonDynamoDBClient client;
         private readonly DynamoDBContext dbContext;
         private readonly SizeRepo sizeRepo;
         private static HttpClient httpClient = new HttpClient();
 
-        public Functions()
+        public NotificationFunction()
         {
             client = new AmazonDynamoDBClient();
             dbContext = new DynamoDBContext(client);
@@ -38,7 +35,7 @@ namespace slack_pokerbot_dotnet
         /// </summary>
         /// <param name="request"></param>
         /// <returns>The API Gateway response.</returns>
-        public APIGatewayProxyResponse Post(APIGatewayProxyRequest request, ILambdaContext context)
+        public APIGatewayProxyResponse HandleCommand(APIGatewayProxyRequest request, ILambdaContext context)
         {
             Console.WriteLine("Post Request\n");
 

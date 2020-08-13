@@ -31,17 +31,20 @@ Resources:
       ProvisionedThroughput: 
         ReadCapacityUnits: 5
         WriteCapacityUnits: 5
+  PokerBotTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+        TopicName: pokerbot_topic
   SlackPokerBotFunction:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Properties:
-      Handler: slack-pokerbot-dotnet::slack_pokerbot_dotnet.Functions::Post
+      Handler: slack-pokerbot-dotnet::slack_pokerbot_dotnet.WebApiFunction::HandleCommand
       Runtime: dotnetcore3.1
       Events:
-        RootGet:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+        RootNotification:
+          Type: SNS # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
           Properties:
-            Path: /
-            Method: POST
+            Topic: !Ref PokerBotTopic
       Environment:
         Variables:
           SLACK_TOKEN: !Ref SlackToken
@@ -49,6 +52,17 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref PokerBotTable
+  SlackPokerBotApiFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      Handler: slack-pokerbot-dotnet::slack_pokerbot_dotnet.WebApiFunction::Post
+      Runtime: dotnetcore3.1
+      Events:
+        RootGet:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Path: /
+            Method: POST
 
 Outputs:
   # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
@@ -57,9 +71,15 @@ Outputs:
   ApiURL:
     Description: "API Gateway endpoint URL for Prod stage for Slack Poker Bot"
     Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+  SlackPokerBotApiFunction:
+    Description: "Slack Poker Bot API Lambda Function ARN"
+    Value: !GetAtt SlackPokerBotApiFunction.Arn
+  SlackPokerBotApiFunctionIamRole:
+    Description: "Implicit IAM Role created for Slack Poker Bot API function"
+    Value: !GetAtt SlackPokerBotApiFunctionRole.Arn
   SlackPokerBotFunction:
-    Description: "Slack Poker Bot Lambda Function ARN"
+    Description: "Slack Poker Bot SNS Lambda Function ARN"
     Value: !GetAtt SlackPokerBotFunction.Arn
   SlackPokerBotFunctionIamRole:
-    Description: "Implicit IAM Role created for Slack Poker Bot function"
+    Description: "Implicit IAM Role created for Slack Poker Bot SNS function"
     Value: !GetAtt SlackPokerBotFunctionRole.Arn
