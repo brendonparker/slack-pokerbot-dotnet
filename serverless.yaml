@@ -1,0 +1,104 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: slack-pokerbot-dotnet
+
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 3
+
+Parameters:
+  SlackToken:
+    Type: String
+  ImageLocation:
+    Type: String
+
+Resources:
+  PokerBotTable:
+    Type: AWS::DynamoDB::Table
+    Properties: 
+      TableName: pokerbot
+      AttributeDefinitions: 
+        - AttributeName: channel
+          AttributeType: S
+        - AttributeName: key
+          AttributeType: S
+      KeySchema: 
+        - AttributeName: channel
+          KeyType: HASH
+        - AttributeName: key
+          KeyType: RANGE
+      ProvisionedThroughput: 
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+  SlackPokerBotFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      Handler: slack-pokerbot-dotnet::slack_pokerbot_dotnet.Functions::Get
+      Runtime: dotnetcore3.1
+      Events:
+        RootGet:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Path: /
+            Method: GET
+      Environment:
+        Variables:
+          SLACK_TOKEN: !Ref SlackToken
+          IMAGE_LOCATION: !Ref ImageLocation
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PokerBotTable
+
+Outputs:
+  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
+  # Find out more about other implicit resources you can reference within SAM
+  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
+  ApiURL:
+    Description: "API Gateway endpoint URL for Prod stage for Slack Poker Bot"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+  SlackPokerBotFunction:
+    Description: "Slack Poker Bot Lambda Function ARN"
+    Value: !GetAtt SlackPokerBotFunction.Arn
+  SlackPokerBotFunctionIamRole:
+    Description: "Implicit IAM Role created for Slack Poker Bot function"
+    Value: !GetAtt SlackPokerBotFunctionRole.Arn
+#
+#{
+#  "AWSTemplateFormatVersion": "2010-09-09",
+#  "Transform": "AWS::Serverless-2016-10-31",
+#  "Description": "An AWS Serverless Application.",
+#  "Resources": {
+#    "Get": {
+#      "Type": "AWS::Serverless::Function",
+#      "Properties": {
+#        "Handler": "slack-pokerbot-dotnet::slack_pokerbot_dotnet.Functions::Get",
+#        "Runtime": "dotnetcore3.1",
+#        "CodeUri": "",
+#        "MemorySize": 256,
+#        "Timeout": 30,
+#        "Role": null,
+#        "Policies": [
+#          "AWSLambdaBasicExecutionRole"
+#        ],
+#        "Events": {
+#          "RootGet": {
+#            "Type": "Api",
+#            "Properties": {
+#              "Path": "/",
+#              "Method": "GET"
+#            }
+#          }
+#        }
+#      }
+#    }
+#  },
+#  "Outputs": {
+#    "ApiURL": {
+#      "Description": "API endpoint URL for Prod environment",
+#      "Value": {
+#        "Fn::Sub": "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+#      }
+#    }
+#  }
+#}
