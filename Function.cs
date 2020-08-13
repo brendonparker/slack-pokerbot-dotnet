@@ -8,6 +8,7 @@ using Amazon.Lambda.Core;
 using Amazon.Lambda.APIGatewayEvents;
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.DataModel;
+using Newtonsoft.Json;
 
 // Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class.
 [assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.SystemTextJson.DefaultLambdaJsonSerializer))]
@@ -39,14 +40,22 @@ namespace slack_pokerbot_dotnet
             if (!IsValidSlackToken(slackEvent.token))
                 throw new Exception("Invalid Slack Token");
 
-            var response = new APIGatewayProxyResponse
+            if (string.IsNullOrWhiteSpace(slackEvent.text))
+            {
+                return CreateEphemeralResponse("Type */poker help* for pokerbot commands.");
+            }
+
+            return CreateEphemeralResponse("Invalid command. Type */poker help* for pokerbot commands.");
+        }
+
+        public APIGatewayProxyResponse CreateEphemeralResponse(string text)
+        {
+            return new APIGatewayProxyResponse
             {
                 StatusCode = (int)HttpStatusCode.OK,
-                Body = "Hello AWS Serverless",
+                Body = JsonConvert.SerializeObject(new { text }),
                 Headers = new Dictionary<string, string> { { "Content-Type", "text/plain" } }
             };
-
-            return response;
         }
 
         private bool IsValidSlackToken(string token)
