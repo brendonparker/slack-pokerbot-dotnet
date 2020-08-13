@@ -1,4 +1,36 @@
-# Slack Pokerbot in dotnet core
+_This bot was migrated from python to dotnet core. Original source code: https://github.com/nateyolles/slack-pokerbot_
+
+# Slack Pokerbot for AWS Lambda (in dotnet core!)
+
+Pokerbot is a [Slash Command](https://api.slack.com/slash-commands) for [Slack](https://slack.com/). It's easily hosted on [Amazon Web Services' Lambda](https://aws.amazon.com/lambda/).
+
+![Screenshot of Pokerbot in Slack](https://raw.githubusercontent.com/nateyolles/slack-pokerbot/master/images/screenshot.png)
+
+## Configure Slack Slash Command
+
+1. Navigate to https://<your-team-name>.slack.com/apps/manage/custom-integrations
+2. Click on "Slash Commands" and "Add Configuration" 
+3. Set the Command to "/poker"
+4. Set the URL to the path provided by AWS
+5. Set the Method to "POST"
+6. Set Custom Name to "poker"
+7. Customize Icon if you wish
+8. Check "Show this command in the autocomplete list"
+9. Set Description to "Play Scrum planning poker"
+10. Set Usage Hint to "help [or deal, vote <number>, tally, reveal]""
+11. Copy the Token
+
+## Configure
+
+1. Paste the Slack Token
+2. Set the path to your images
+3. Set the planning poker values you want to use (e.g. 0, 1, 2, 3, 5, 8, 13, 20, 40, 100)
+
+## Play Poker Planning
+1. Type "/poker deal" in a channel
+2. Everyone votes by typing "/poker vote <your vote>"
+3. Type "/pokerbot tally" in the channel to show the names of those who have voted
+4. Type "/pokerbot reveal" in the channel to reveal the voting results
 
 ## Here are some steps to follow from Visual Studio:
 
