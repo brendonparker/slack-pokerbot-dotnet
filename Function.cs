@@ -13,7 +13,6 @@ using Amazon.DynamoDBv2.DocumentModel;
 using Amazon.DynamoDBv2.Model;
 using System.Net.Http;
 using System.Text;
-using System.Globalization;
 using System.Diagnostics;
 
 // Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class.
@@ -207,15 +206,60 @@ namespace slack_pokerbot_dotnet
                             .Select(x => x.First().UserName)
                             .ToList();
 
-                        if(userNames.Count == 0)
+                        if (userNames.Count == 0)
                             return CreateEphemeralResponse("No one has voted yet");
-                        if(userNames.Count == 1)
+                        if (userNames.Count == 1)
                             return CreateEphemeralResponse($"{userNames[0]} has voted");
 
                         return CreateEphemeralResponse($"{string.Join(", ", userNames)} have voted");
                     }
                 case "reveal":
-                    break;
+                    {
+                        var session = await GetCurrentSession(slackEvent);
+                        if (session == null)
+                            return CreateEphemeralResponse("The poker planning game hasn't started yet.");
+
+                        if (!session.Attributes.Votes.Any())
+                            return CreateEphemeralResponse("No one voted :sad:");
+
+                        var mostRecentVotes = session.Attributes.Votes
+                            .GroupBy(x => x.UserId)
+                            .Select(x => x.OrderByDescending(x => x.Timestamp).First())
+                            .ToArray();
+
+                        var config = await dbContext.LoadAsync<DbSizeConfig>(slackEvent.TeamAndChannel, "Config");
+                        var validValues = sizeRepo.GetSize(config.Attributes.Size);
+
+                        if (mostRecentVotes.Select(x => x.Vote).Distinct().Count() == 1)
+                        {
+                            var voteVal = mostRecentVotes.First().Vote;
+                            return CreateMessage("*Congratulations!*", new[]
+                            {
+                                new SlackAttachment
+                                {
+                                    Text = "Everyone selected the same number",
+                                    Color = "good",
+                                    ImageUrl = validValues[voteVal]
+                                }
+                            });
+                        }
+                        else
+                        {
+                            var attachments = mostRecentVotes.GroupBy(x => x.Vote)
+                                .Select(grp =>
+                                {
+                                    var userNames = string.Join(", ", grp.Select(x => x.UserName));
+                                    return new SlackAttachment
+                                    {
+                                        Text = userNames,
+                                        Color = "warning",
+                                        ImageUrl = validValues[grp.Key]
+                                    };
+                                });
+
+                            return CreateMessage("*No winner yet.* Discuss and continue voting.", attachments);
+                        }
+                    }
                 case "end":
                     break;
             }
