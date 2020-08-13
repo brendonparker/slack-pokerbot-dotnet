@@ -10,6 +10,10 @@ using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.DataModel;
 using Newtonsoft.Json;
 using Amazon.DynamoDBv2.DocumentModel;
+using Amazon.DynamoDBv2.Model;
+using System.Drawing;
+using System.Net.Http;
+using System.Text;
 
 // Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class.
 [assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.SystemTextJson.DefaultLambdaJsonSerializer))]
@@ -21,6 +25,7 @@ namespace slack_pokerbot_dotnet
         private readonly AmazonDynamoDBClient client;
         private readonly DynamoDBContext dbContext;
         private readonly SizeRepo sizeRepo;
+        private static HttpClient httpClient = new HttpClient();
 
         public Functions()
         {
@@ -85,46 +90,104 @@ namespace slack_pokerbot_dotnet
                         return CreateEphemeralResponse("Size has been set for channel.");
                     }
                 case "deal":
-                    if (commandArguments.Length < 2)
                     {
-                        return CreateEphemeralResponse("You did not enter a JIRA ticket number.");
+                        if (commandArguments.Length < 2)
+                        {
+                            return CreateEphemeralResponse("You did not enter a JIRA ticket number.");
+                        }
+
+                        var ticketNumber = commandArguments[1];
+
+                        await dbContext.SaveAsync(new DbPokerSession
+                        {
+                            TeamAndChannel = slackEvent.TeamAndChannel,
+                            Attributes = new PokerSession
+                            {
+                                JiraTicket = ticketNumber
+                            }
+                        });
+
+                        var config = await dbContext.LoadAsync<DbSizeConfig>(slackEvent.TeamAndChannel, "Config");
+
+                        return CreateMessage($"*The planning poker game has started* for {ticketNumber}", new[]
+                        {
+                            new SlackAttachment
+                            {
+                                Text = "Vote by typing */poker vote <size>*.",
+                                ImageUrl = sizeRepo.GetCompositeImage(config.Attributes.Size)
+                            }
+                        });
                     }
-
-                    var ticketNumber = commandArguments[1];
-
-                    await dbContext.SaveAsync(new DbPokerSession
-                    {
-                        TeamAndChannel = slackEvent.TeamAndChannel,
-                        Attributes = new PokerSession
-                        {
-                            JiraTicket = ticketNumber
-                        }
-                    });
-
-                    //var queryConfig = new DynamoDBOperationConfig
-                    //{
-                    //    BackwardQuery = true
-                    //};
-                    //var set = await dbContext
-                    //    .QueryAsync<DbPokerSession>(slackEvent.TeamAndChannel, QueryOperator.BeginsWith, new[] { "Session|" }, queryConfig)
-                    //    .GetNextSetAsync();
-
-                    var config = await dbContext.LoadAsync<DbSizeConfig>(slackEvent.TeamAndChannel, "Config");
-
-                    //var session = set.First();
-                    //session.Attributes.JiraTicket = ticketNumber;
-                    //await dbContext.SaveAsync(session);
-
-                    return CreateMessage($"*The planning poker game has started* for {ticketNumber}", new[]
-                    {
-                        new SlackAttachment
-                        {
-                            Text = "Vote by typing */poker vote <size>*.",
-                            ImageUrl = sizeRepo.GetCompositeImage(config.Attributes.Size)
-                        }
-                    });
                 case "vote":
-                    break;
+                    {
+                        var config = await dbContext.LoadAsync<DbSizeConfig>(slackEvent.TeamAndChannel, "Config");
+
+                        var queryConfig = new DynamoDBOperationConfig
+                        {
+                            BackwardQuery = true
+                        };
+                        var results = await dbContext
+                            .QueryAsync<DbPokerSession>(slackEvent.TeamAndChannel, QueryOperator.BeginsWith, new[] { "Session|" }, queryConfig)
+                            .GetNextSetAsync();
+
+                        var session = results.FirstOrDefault();
+
+                        if (config == null || session == null)
+                            return CreateEphemeralResponse("The poker planning game hasn't started yet.");
+
+                        if (commandArguments.Length < 2)
+                            return CreateEphemeralResponse("Your vote was not counted. You didn't enter a size.");
+
+                        var voteVal = commandArguments[1];
+
+                        var sizeValues = sizeRepo.GetSize(config.Attributes.Size);
+                        if (!sizeValues.ContainsKey(voteVal))
+                        {
+                            var validSizes = string.Join(", ", sizeValues.Keys);
+                            return CreateEphemeralResponse("Your vote was not counted. Please enter a valid poker planning size: " + validSizes);
+                        }
+
+                        var pokerVote = new PokerSessionVote
+                        {
+                            UserId = slackEvent.user_id,
+                            UserName = slackEvent.user_name,
+                            Timestamp = DateTime.UtcNow,
+                            Vote = voteVal
+                        };
+
+                        // Hacky hack hack to get AttributeValue for PokerSessionVote
+                        var doc = Document.FromJson(JsonConvert.SerializeObject(new { temp = new[] { pokerVote } }));
+                        var voteAttributeValue = doc.ToAttributeMap()["temp"];
+
+                        await client.UpdateItemAsync(new UpdateItemRequest
+                        {
+                            TableName = "pokerbot",
+                            Key = new Dictionary<string, AttributeValue>
+                            {
+                                { "channel", new AttributeValue(session.TeamAndChannel) },
+                                { "key", new AttributeValue(session.Key) },
+                            },
+                            UpdateExpression = "SET #ATTRIBUTES.#VOTES = list_append(if_not_exists(#ATTRIBUTES.#VOTES, :empty_list), :VOTE)",
+                            ExpressionAttributeNames = new Dictionary<string, string>
+                            {
+                                { "#ATTRIBUTES", "Attributes" },
+                                { "#VOTES", "Votes" }
+                            },
+                            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+                            {
+                                {":VOTE", voteAttributeValue },
+                                {":empty_list", new AttributeValue { L = new List<AttributeValue>(), IsLSet = true } }
+                            }
+                        });
+
+                        // Intentionally fire-and-forget
+                        SendDelayedMessageAsync(slackEvent.response_url, new SlackMessage
+                        {
+                            text = $"{slackEvent.user_name} voted!"
+                        });
+
+                        return CreateEphemeralResponse($"You voted *{voteVal}*");
+                    }
                 case "tally":
                     break;
                 case "reveal":
@@ -133,6 +196,28 @@ namespace slack_pokerbot_dotnet
                     break;
             }
             return CreateEphemeralResponse("Invalid command. Type */poker help* for pokerbot commands.");
+        }
+
+        public async Task SendDelayedMessageAsync(string requestUri, SlackMessage slackMessage)
+        {
+            var strJson = JsonConvert.SerializeObject(slackMessage);
+            Console.WriteLine($"SendDelayedMessageAsync: {strJson}");
+            using (var content = new StringContent(strJson, Encoding.UTF8, "application/json"))
+            {
+                try
+                {
+                    var res = await httpClient.PostAsync(requestUri, content);
+                    Console.WriteLine($"SendDelayedMessage - Status Code: {res.StatusCode}");
+                    if (!res.IsSuccessStatusCode)
+                    {
+                        throw new Exception(await res.Content.ReadAsStringAsync());
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"SendDelayedMessage Failed! {ex.Message}");
+                }
+            }
         }
 
         public APIGatewayProxyResponse CreateEphemeralResponse(string text)
@@ -155,6 +240,12 @@ namespace slack_pokerbot_dotnet
                 Body = JsonConvert.SerializeObject(new { text, attachments }),
                 Headers = new Dictionary<string, string> { { "Content-Type", "application/json" } }
             };
+        }
+
+        public class SlackMessage
+        {
+            public string text { get; set; }
+            public IEnumerable<SlackAttachment> attachments { get; set; }
         }
 
 
@@ -185,6 +276,15 @@ namespace slack_pokerbot_dotnet
             public long Id { get; set; } = DateTime.UtcNow.Ticks;
             public DateTime StartedOn { get; set; } = DateTime.UtcNow;
             public string JiraTicket { get; set; }
+            public List<PokerSessionVote> Votes { get; set; } = new List<PokerSessionVote>();
+        }
+
+        public class PokerSessionVote
+        {
+            public string UserId { get; set; }
+            public string UserName { get; set; }
+            public string Vote { get; set; }
+            public DateTime Timestamp { get; set; }
         }
 
         [DynamoDBTable("pokerbot")]
