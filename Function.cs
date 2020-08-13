@@ -1,19 +1,18 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net;
-using System.Threading.Tasks;
-
-using Amazon.Lambda.Core;
-using Amazon.Lambda.APIGatewayEvents;
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.DataModel;
-using Newtonsoft.Json;
 using Amazon.DynamoDBv2.DocumentModel;
 using Amazon.DynamoDBv2.Model;
+using Amazon.Lambda.APIGatewayEvents;
+using Amazon.Lambda.Core;
+using Newtonsoft.Json;
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Text;
-using System.Diagnostics;
+using System.Threading.Tasks;
 
 // Assembly attribute to enable the Lambda function's JSON input to be converted into a .NET class.
 [assembly: LambdaSerializer(typeof(Amazon.Lambda.Serialization.SystemTextJson.DefaultLambdaJsonSerializer))]
@@ -32,10 +31,6 @@ namespace slack_pokerbot_dotnet
             client = new AmazonDynamoDBClient();
             dbContext = new DynamoDBContext(client);
             sizeRepo = new SizeRepo();
-
-            // Hack: Warm up dbContext
-            // Intentionally fire and forget
-            dbContext.LoadAsync<DbSizeConfig>("", "");
         }
 
         /// <summary>
