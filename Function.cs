@@ -278,8 +278,24 @@ namespace slack_pokerbot_dotnet
                             });
                         }
                     }
-                case "end":
-                    return CreateEphemeralResponse("end hasn't been implemented yet");
+                case "report":
+                case "history":
+                    {
+                        var queryConfig = new DynamoDBOperationConfig
+                        {
+                            // Trying to get the session "at the top of the stack"
+                            BackwardQuery = true
+                        };
+                        var results = await dbContext
+                            .QueryAsync<DbPokerSession>(slackEvent.TeamAndChannel, QueryOperator.BeginsWith, new[] { "Session|" }, queryConfig)
+                            .GetNextSetAsync();
+
+                        var previousSessions = results.Select(x => x.Attributes).Take(10).ToList();
+
+                        var msg = PlainTextTable.ToTable(Report(previousSessions));
+
+                        return CreateEphemeralResponse(msg);
+                    }
                 case "help":
                     return CreateEphemeralResponse(@"Pokerbot helps you play Agile/Scrum poker planning.
 
@@ -289,7 +305,7 @@ Use the following commands:
  /poker vote
  /poker tally
  /poker reveal
- /poker end");
+ /poker history");
             }
             return CreateEphemeralResponse("Invalid command. Type */poker help* for pokerbot commands.");
         }
@@ -350,6 +366,28 @@ Use the following commands:
                 Body = JsonConvert.SerializeObject(msg),
                 Headers = new Dictionary<string, string> { { "Content-Type", "application/json" } }
             };
+        }
+
+        public IEnumerable<VoteReportRow> Report(List<PokerSession> sessions)
+        {
+            foreach (var session in sessions)
+            {
+                var votes = session.Votes
+                    .GroupBy(x => x.UserId)
+                    .Select(grp => grp.OrderByDescending(x => x.Timestamp).First());
+
+                foreach (var vote in votes.GroupBy(x => x.Vote))
+                {
+                    yield return new VoteReportRow
+                    {
+                        Story = session.JiraTicket,
+                        Date = session.StartedOn.ToShortDateString(),
+                        Vote = vote.Key,
+                        Count = vote.Count(),
+                        People = string.Join(", ", vote.Select(x => x.UserName))
+                    };
+                }
+            }
         }
 
         private bool IsValidSlackToken(string token)
