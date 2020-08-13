@@ -11,7 +11,6 @@ using Amazon.DynamoDBv2.DataModel;
 using Newtonsoft.Json;
 using Amazon.DynamoDBv2.DocumentModel;
 using Amazon.DynamoDBv2.Model;
-using System.Drawing;
 using System.Net.Http;
 using System.Text;
 
@@ -20,7 +19,7 @@ using System.Text;
 
 namespace slack_pokerbot_dotnet
 {
-    public class Functions
+    public partial class Functions
     {
         private readonly AmazonDynamoDBClient client;
         private readonly DynamoDBContext dbContext;
@@ -89,6 +88,8 @@ namespace slack_pokerbot_dotnet
 
                         return CreateEphemeralResponse("Size has been set for channel.");
                     }
+                case "start":
+                    return CreateEphemeralResponse("No need to start, just *deal*");
                 case "deal":
                     {
                         if (commandArguments.Length < 2)
@@ -181,7 +182,7 @@ namespace slack_pokerbot_dotnet
                         });
 
                         // Intentionally fire-and-forget
-                        SendDelayedMessageAsync(slackEvent.response_url, new SlackMessage
+                        SendDelayedMessageAsync(slackEvent.response_url, new SlackReply
                         {
                             text = $"{slackEvent.user_name} voted!"
                         });
@@ -198,7 +199,7 @@ namespace slack_pokerbot_dotnet
             return CreateEphemeralResponse("Invalid command. Type */poker help* for pokerbot commands.");
         }
 
-        public async Task SendDelayedMessageAsync(string requestUri, SlackMessage slackMessage)
+        public async Task SendDelayedMessageAsync(string requestUri, SlackReply slackMessage)
         {
             var strJson = JsonConvert.SerializeObject(slackMessage);
             Console.WriteLine($"SendDelayedMessageAsync: {strJson}");
@@ -242,82 +243,11 @@ namespace slack_pokerbot_dotnet
             };
         }
 
-        public class SlackMessage
-        {
-            public string text { get; set; }
-            public IEnumerable<SlackAttachment> attachments { get; set; }
-        }
-
-
         private bool IsValidSlackToken(string token)
         {
             var configuredSlackToken = Environment.GetEnvironmentVariable("SLACK_TOKEN");
             var validTokens = configuredSlackToken.Split(new[] { ' ', ';', ',' }, StringSplitOptions.RemoveEmptyEntries);
             return validTokens.Contains(token);
         }
-
-        [DynamoDBTable("pokerbot")]
-        public class DbPokerSession
-        {
-            [DynamoDBHashKey("channel")]
-            public string TeamAndChannel { get; set; }
-            [DynamoDBRangeKey("key")]
-            public string Key
-            {
-                get => $"Session|{Attributes.Id}";
-                set { }
-            }
-
-            public PokerSession Attributes { get; set; }
-        }
-
-        public class PokerSession
-        {
-            public long Id { get; set; } = DateTime.UtcNow.Ticks;
-            public DateTime StartedOn { get; set; } = DateTime.UtcNow;
-            public string JiraTicket { get; set; }
-            public List<PokerSessionVote> Votes { get; set; } = new List<PokerSessionVote>();
-        }
-
-        public class PokerSessionVote
-        {
-            public string UserId { get; set; }
-            public string UserName { get; set; }
-            public string Vote { get; set; }
-            public DateTime Timestamp { get; set; }
-        }
-
-        [DynamoDBTable("pokerbot")]
-        public class DbSizeConfig
-        {
-            [DynamoDBHashKey("channel")]
-            public string TeamAndChannel { get; set; }
-            [DynamoDBRangeKey("key")]
-            public string Key
-            {
-                get => $"Config";
-                set { }
-            }
-
-            public SizeConfig Attributes { get; set; }
-        }
-
-        public class SizeConfig
-        {
-            public string Size { get; set; }
-            public DateTime LastUpdated { get; set; }
-        }
-    }
-
-    public class SlackAttachment
-    {
-        [JsonProperty("text")]
-        public string Text { get; set; }
-        [JsonProperty("color")]
-        public string Color { get; set; }
-        [JsonProperty("image_url")]
-        public string ImageUrl { get; set; }
-        [JsonProperty("thumb_url")]
-        public string ThumbUrl { get; set; }
     }
 }
