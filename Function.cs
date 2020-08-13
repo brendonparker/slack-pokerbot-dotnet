@@ -193,7 +193,8 @@ namespace slack_pokerbot_dotnet
                         // Intentionally fire-and-forget
                         SendDelayedMessageAsync(slackEvent.response_url, new SlackReply
                         {
-                            text = $"{slackEvent.user_name} voted!"
+                            text = $"{slackEvent.user_name} voted!",
+                            response_type = "in_channel"
                         });
 
                         return CreateEphemeralResponse($"You voted *{voteVal}*");
