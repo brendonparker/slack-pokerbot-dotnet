@@ -280,6 +280,16 @@ namespace slack_pokerbot_dotnet
                     }
                 case "end":
                     return CreateEphemeralResponse("end hasn't been implemented yet");
+                case "help":
+                    return CreateEphemeralResponse(@"Pokerbot helps you play Agile/Scrum poker planning.
+
+Use the following commands:
+ /poker setup
+ /poker deal
+ /poker vote
+ /poker tally
+ /poker reveal
+ /poker end");
             }
             return CreateEphemeralResponse("Invalid command. Type */poker help* for pokerbot commands.");
         }
