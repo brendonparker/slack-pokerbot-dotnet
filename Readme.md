@@ -1,4 +1,5 @@
-_This bot was migrated from python to dotnet core. Original source code: https://github.com/nateyolles/slack-pokerbot_
+_This bot was migrated from python to dotnet core. Original source code: https://github.com/jkoors/slack-pokerbot_
+_However, there appears to be some cold-start issues with .NET Core 3.1. Can take up to 5 seconds for the initial AWS SDK bits to load, which is too long/unresponsive for slack, so you see timeout messages/errors in slack. As a result, I've abandoned actual use of this project for favor of the python version (linked above). See branch `feature/async` for an attempt to offload the work using SNS. However that too is still too slow to make the publish call. Also in that branch I attempted to use the Ready2Run parameters to try and do some AOT compilation of .NET, with no real difference being noticable._
 
 # Slack Pokerbot for AWS Lambda (in dotnet core!)
 
