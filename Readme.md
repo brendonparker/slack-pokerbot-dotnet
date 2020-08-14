@@ -56,3 +56,22 @@ Deploy application
 ```
     dotnet lambda deploy-serverless -cfg aws-lambda-tools-defaults.mine.json
 ```
+
+
+Using Ready2Run images: https://docs.microsoft.com/en-us/dotnet/core/whats-new/dotnet-core-3-0#readytorun-images
+
+First, need to have docker host installed, and running as linux host.
+Then enable this setting from the cmd line:
+```
+set DOCKER_BUILDKIT=1
+```
+
+Then run docker build, using custom build output: https://docs.docker.com/engine/reference/commandline/build/#custom-build-outputs
+```
+docker build -o out .
+```
+
+Then deploy using pre-published Ready2Run artifacts:
+```
+dotnet lambda deploy-serverless -cfg aws-lambda-tools-defaults.mine.json --package ./out
+```
