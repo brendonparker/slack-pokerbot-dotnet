@@ -63,6 +63,9 @@ Resources:
           Properties:
             Path: /
             Method: POST
+      Environment:
+        Variables:
+          TOPIC_ARN: !Ref PokerBotTopic
 
 Outputs:
   # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
